@@ -15,8 +15,9 @@ claude mcp add finding-mcp -- ./run.sh /path/to/target/repo
 ### install.sh로 등록
 
 ```bash
-./install.sh user /path/to/target/repo      # user scope
-./install.sh project /path/to/target/repo    # project scope
+./install.sh /path/to/target/repo            # user scope (기본)
+./install.sh /path/to/target/repo -s project # project scope
+./install.sh .                               # 현재 디렉토리
 ```
 
 ## 아키텍처

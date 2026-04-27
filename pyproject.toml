@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "finding-mcp"
+version = "0.2.0"
+description = "Security-focused code analysis MCP server — taint analysis, route mapping, symbol navigation"
+requires-python = ">=3.10"
+authors = [{ name = "Gayang2902" }]
+license = { text = "MIT" }
+readme = "README.md"
+keywords = ["mcp", "security", "code-analysis", "semgrep", "taint"]
+dependencies = [
+    "mcp>=1.2.0",
+    "pydantic>=2.6",
+    "tree-sitter>=0.23",
+    "tree-sitter-java>=0.23",
+    "tree-sitter-php>=0.23",
+    "tree-sitter-javascript>=0.23",
+    "tree-sitter-typescript>=0.23",
+]
+
+[project.optional-dependencies]
+sse = ["uvicorn>=0.27"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+finding-mcp = "finding_mcp.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/finding_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

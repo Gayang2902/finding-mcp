@@ -1,0 +1,119 @@
+rules:
+  - id: js-express-taint-cmdi
+    mode: taint
+    severity: WARNING
+    message: "Tainted input reaches command execution sink"
+    languages: [javascript, typescript]
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+    pattern-sources:
+      - pattern: req.query
+      - pattern: req.body
+      - pattern: req.params
+      - pattern: req.headers
+      - pattern: req.cookies
+    pattern-sinks:
+      - pattern: exec(...)
+      - pattern: execSync(...)
+      - pattern: spawn(...)
+      - pattern: execFile(...)
+      - pattern: $CP.exec(...)
+      - pattern: $CP.execSync(...)
+      - pattern: $CP.spawn(...)
+
+  - id: js-express-taint-eval
+    mode: taint
+    severity: WARNING
+    message: "Tainted input reaches code evaluation sink"
+    languages: [javascript, typescript]
+    metadata:
+      cwe: CWE-94
+      category: code-injection
+    pattern-sources:
+      - pattern: req.query
+      - pattern: req.body
+      - pattern: req.params
+    pattern-sinks:
+      - pattern: eval(...)
+      - pattern: Function(...)
+      - pattern: setTimeout($X, ...)
+      - pattern: setInterval($X, ...)
+      - pattern: new Function(...)
+
+  - id: js-express-taint-sqli
+    mode: taint
+    severity: WARNING
+    message: "Tainted input reaches SQL query sink"
+    languages: [javascript, typescript]
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+    pattern-sources:
+      - pattern: req.query
+      - pattern: req.body
+      - pattern: req.params
+    pattern-sinks:
+      - pattern: $DB.query(...)
+      - pattern: $DB.execute(...)
+      - pattern: $DB.raw(...)
+      - pattern: $KNEX.raw(...)
+      - pattern: $SEQ.query(...)
+
+  - id: js-express-taint-xss
+    mode: taint
+    severity: WARNING
+    message: "Tainted input reaches HTML rendering sink"
+    languages: [javascript, typescript]
+    metadata:
+      cwe: CWE-79
+      category: xss
+    pattern-sources:
+      - pattern: req.query
+      - pattern: req.body
+      - pattern: req.params
+    pattern-sinks:
+      - pattern: $RES.send(...)
+      - pattern: $RES.write(...)
+      - pattern: $RES.end(...)
+      - pattern: $EL.innerHTML = $X
+
+  - id: js-express-taint-path
+    mode: taint
+    severity: WARNING
+    message: "Tainted input reaches file system sink"
+    languages: [javascript, typescript]
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+    pattern-sources:
+      - pattern: req.query
+      - pattern: req.body
+      - pattern: req.params
+    pattern-sinks:
+      - pattern: $FS.readFile(...)
+      - pattern: $FS.readFileSync(...)
+      - pattern: $FS.writeFile(...)
+      - pattern: $FS.writeFileSync(...)
+      - pattern: $FS.unlink(...)
+      - pattern: $FS.createReadStream(...)
+      - pattern: $RES.sendFile(...)
+
+  - id: js-express-taint-ssrf
+    mode: taint
+    severity: WARNING
+    message: "Tainted input reaches HTTP request sink"
+    languages: [javascript, typescript]
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+    pattern-sources:
+      - pattern: req.query
+      - pattern: req.body
+      - pattern: req.params
+    pattern-sinks:
+      - pattern: fetch(...)
+      - pattern: axios(...)
+      - pattern: axios.$METHOD(...)
+      - pattern: $HTTP.request(...)
+      - pattern: $HTTP.get(...)

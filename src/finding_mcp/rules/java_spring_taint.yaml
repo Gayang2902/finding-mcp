@@ -1,0 +1,136 @@
+rules:
+  - id: java-spring-taint-sqli
+    mode: taint
+    severity: WARNING
+    message: "Tainted Spring input reaches SQL execution sink"
+    languages: [java]
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+    pattern-sources:
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestParam $TYPE $X, ...) { ... }
+          - pattern: $X
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @PathVariable $TYPE $X, ...) { ... }
+          - pattern: $X
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestBody $TYPE $DTO, ...) { ... }
+          - pattern: $DTO
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestHeader(...) $TYPE $X, ...) { ... }
+          - pattern: $X
+      - pattern: (HttpServletRequest $REQ).getParameter(...)
+      - pattern: (HttpServletRequest $REQ).getHeader(...)
+    pattern-sinks:
+      - pattern: (Statement $S).executeQuery(...)
+      - pattern: (Statement $S).executeUpdate(...)
+      - pattern: (Statement $S).execute(...)
+      - pattern: (Connection $C).prepareStatement(...)
+      - pattern: $JDBC.query(...)
+      - pattern: $JDBC.update(...)
+      - pattern: $JDBC.execute(...)
+
+  - id: java-spring-taint-cmdi
+    mode: taint
+    severity: WARNING
+    message: "Tainted Spring input reaches command execution sink"
+    languages: [java]
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+    pattern-sources:
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestParam $TYPE $X, ...) { ... }
+          - pattern: $X
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestBody $TYPE $DTO, ...) { ... }
+          - pattern: $DTO
+      - pattern: (HttpServletRequest $REQ).getParameter(...)
+    pattern-sinks:
+      - pattern: Runtime.getRuntime().exec(...)
+      - pattern: (ProcessBuilder $PB).command(...)
+      - pattern: new ProcessBuilder(...)
+
+  - id: java-spring-taint-path
+    mode: taint
+    severity: WARNING
+    message: "Tainted Spring input reaches file system sink"
+    languages: [java]
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+    pattern-sources:
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestParam $TYPE $X, ...) { ... }
+          - pattern: $X
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @PathVariable $TYPE $X, ...) { ... }
+          - pattern: $X
+      - pattern: (HttpServletRequest $REQ).getParameter(...)
+    pattern-sinks:
+      - pattern: new File(...)
+      - pattern: new FileInputStream(...)
+      - pattern: new FileOutputStream(...)
+      - pattern: Paths.get(...)
+      - pattern: Files.readAllBytes(...)
+      - pattern: Files.write(...)
+
+  - id: java-spring-taint-ssrf
+    mode: taint
+    severity: WARNING
+    message: "Tainted Spring input reaches HTTP request sink"
+    languages: [java]
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+    pattern-sources:
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestParam $TYPE $X, ...) { ... }
+          - pattern: $X
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestBody $TYPE $DTO, ...) { ... }
+          - pattern: $DTO
+      - pattern: (HttpServletRequest $REQ).getParameter(...)
+    pattern-sinks:
+      - pattern: new URL(...)
+      - pattern: $REST.getForObject(...)
+      - pattern: $REST.postForObject(...)
+      - pattern: $REST.exchange(...)
+      - pattern: $HTTP.send(...)
+      - pattern: $WC.get()
+
+  - id: java-spring-taint-xss
+    mode: taint
+    severity: WARNING
+    message: "Tainted Spring input reaches response output sink"
+    languages: [java]
+    metadata:
+      cwe: CWE-79
+      category: xss
+    pattern-sources:
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @RequestParam $TYPE $X, ...) { ... }
+          - pattern: $X
+      - patterns:
+          - pattern-inside: |
+              $RET $FN(..., @PathVariable $TYPE $X, ...) { ... }
+          - pattern: $X
+      - pattern: (HttpServletRequest $REQ).getParameter(...)
+    pattern-sinks:
+      - pattern: (HttpServletResponse $RES).getWriter().write(...)
+      - pattern: (HttpServletResponse $RES).getWriter().print(...)
+      - pattern: (PrintWriter $W).write(...)
+      - pattern: (PrintWriter $W).print(...)
+      - pattern: $MODEL.addAttribute(...)

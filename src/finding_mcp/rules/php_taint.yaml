@@ -1,0 +1,120 @@
+rules:
+  - id: php-taint-sqli
+    mode: taint
+    severity: WARNING
+    message: "Tainted PHP input reaches SQL execution sink"
+    languages: [php]
+    metadata:
+      cwe: CWE-89
+      category: sql-injection
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+    pattern-sinks:
+      - pattern: mysqli_query(...)
+      - pattern: $DB->query(...)
+      - pattern: $DB->prepare(...)
+      - pattern: $PDO->query(...)
+      - pattern: $PDO->exec(...)
+      - pattern: mysql_query(...)
+
+  - id: php-taint-cmdi
+    mode: taint
+    severity: WARNING
+    message: "Tainted PHP input reaches command execution sink"
+    languages: [php]
+    metadata:
+      cwe: CWE-78
+      category: command-injection
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+    pattern-sinks:
+      - pattern: exec(...)
+      - pattern: system(...)
+      - pattern: shell_exec(...)
+      - pattern: passthru(...)
+      - pattern: popen(...)
+      - pattern: proc_open(...)
+      - pattern: pcntl_exec(...)
+
+  - id: php-taint-xss
+    mode: taint
+    severity: WARNING
+    message: "Tainted PHP input reaches output sink"
+    languages: [php]
+    metadata:
+      cwe: CWE-79
+      category: xss
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+      - pattern: $_COOKIE[$KEY]
+    pattern-sinks:
+      - pattern: echo $X
+      - pattern: print($X)
+      - pattern: printf(...)
+      - pattern: $RES->write(...)
+
+  - id: php-taint-path
+    mode: taint
+    severity: WARNING
+    message: "Tainted PHP input reaches file system sink"
+    languages: [php]
+    metadata:
+      cwe: CWE-22
+      category: path-traversal
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+    pattern-sinks:
+      - pattern: file_get_contents(...)
+      - pattern: file_put_contents(...)
+      - pattern: fopen(...)
+      - pattern: include($X)
+      - pattern: require($X)
+      - pattern: include_once($X)
+      - pattern: require_once($X)
+      - pattern: readfile(...)
+      - pattern: unlink(...)
+
+  - id: php-taint-eval
+    mode: taint
+    severity: WARNING
+    message: "Tainted PHP input reaches code evaluation sink"
+    languages: [php]
+    metadata:
+      cwe: CWE-94
+      category: code-injection
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+    pattern-sinks:
+      - pattern: eval(...)
+      - pattern: assert(...)
+      - pattern: preg_replace(...)
+      - pattern: create_function(...)
+
+  - id: php-taint-ssrf
+    mode: taint
+    severity: WARNING
+    message: "Tainted PHP input reaches HTTP request sink"
+    languages: [php]
+    metadata:
+      cwe: CWE-918
+      category: ssrf
+    pattern-sources:
+      - pattern: $_GET[$KEY]
+      - pattern: $_POST[$KEY]
+      - pattern: $_REQUEST[$KEY]
+    pattern-sinks:
+      - pattern: curl_setopt(..., CURLOPT_URL, ...)
+      - pattern: file_get_contents(...)
+      - pattern: $CLIENT->request(...)
+      - pattern: $HTTP->get(...)
+      - pattern: $HTTP->post(...)

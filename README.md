@@ -12,12 +12,19 @@ claude mcp add finding-mcp -- ./run.sh /path/to/target/repo
 
 끝. venv 생성과 패키지 설치는 첫 실행 시 자동으로 처리됩니다.
 
-### install.sh로 등록
+### install.sh로 등록 (Claude Code)
 
 ```bash
 ./install.sh /path/to/target/repo            # user scope (기본)
 ./install.sh /path/to/target/repo -s project # project scope
 ./install.sh .                               # 현재 디렉토리
+```
+
+### install-gemini.sh로 등록 (Gemini CLI)
+
+```bash
+./install-gemini.sh /path/to/target/repo            # user scope (기본)
+./install-gemini.sh /path/to/target/repo -s project # project scope
 ```
 
 ## 아키텍처
@@ -208,6 +215,35 @@ claude mcp add finding-mcp -- /path/to/finding-mcp/run.sh /path/to/target/repo
   }
 }
 ```
+
+## Gemini CLI 연동
+
+### install-gemini.sh (권장)
+
+```bash
+./install-gemini.sh /path/to/target/repo
+```
+
+`~/.gemini/settings.json`에 자동 등록됩니다.
+
+### settings.json 수동 설정
+
+```json
+{
+  "mcpServers": {
+    "finding-mcp": {
+      "command": "/path/to/finding-mcp/run.sh",
+      "args": ["/path/to/target/repo"],
+      "timeout": 30000
+    }
+  }
+}
+```
+
+| Scope | 파일 위치 |
+|-------|-----------|
+| user | `~/.gemini/settings.json` |
+| project | `.gemini/settings.json` |
 
 ## 도구 (20개)
 

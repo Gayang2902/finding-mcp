@@ -1,22 +1,57 @@
-"""MCP server — 20 security analysis tools over stdio or SSE."""
+"""MCP server — 20 security analysis tools over stdio or SSE.
+
+IMPORTANT: stdio transport reserves stdout exclusively for JSON-RPC.
+All logging and diagnostics MUST go to stderr. Any non-JSON byte on
+stdout will break the MCP protocol and cause "Connection closed" errors.
+"""
 
 from __future__ import annotations
 
+import io
 import logging
+import os
 import sys
 
-from mcp.server.fastmcp import FastMCP
-
-from . import tools_meta, tools_routes, tools_search, tools_structure, tools_symbols, tools_taint
-from .config import Settings, load_settings
-from .git_utils import cache_key
-
+# Force logging to stderr BEFORE importing anything that might configure handlers.
 logging.basicConfig(
     level=logging.INFO,
     stream=sys.stderr,
     format="[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+    force=True,
 )
 log = logging.getLogger("finding-mcp")
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402, I001
+
+from . import tools_meta, tools_routes, tools_search, tools_structure, tools_symbols, tools_taint  # noqa: E402
+from .config import Settings, load_settings  # noqa: E402
+from .git_utils import cache_key  # noqa: E402
+
+
+def _guard_stdout() -> None:
+    """Protect stdout from non-JSON-RPC writes in stdio transport mode.
+
+    1. Reconfigures all logging handlers to stderr (in case libraries added stdout handlers).
+    2. Captures Python warnings through the logging system (→ stderr).
+    3. Redirects fd 1 to stderr so C-extension output can't corrupt the protocol.
+    4. Gives sys.stdout the saved real stdout fd for MCP's JSON-RPC transport.
+    """
+    root = logging.getLogger()
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s"))
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+    logging.captureWarnings(True)
+
+    real_stdout_fd = os.dup(sys.stdout.fileno())
+    os.dup2(sys.stderr.fileno(), 1)
+    sys.stdout = io.TextIOWrapper(
+        io.BufferedWriter(io.FileIO(real_stdout_fd, mode="w", closefd=True)),
+        write_through=True,
+    )
 
 
 def _build_server(settings: Settings) -> FastMCP:
@@ -292,6 +327,9 @@ def main() -> None:
     log.info("  transport:    %s", settings.transport)
     if settings.transport != "stdio":
         log.info("  listen:       %s:%d", settings.host, settings.port)
+
+    if settings.transport == "stdio":
+        _guard_stdout()
 
     mcp = _build_server(settings)
 

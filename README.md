@@ -352,7 +352,3 @@ pip install -e ".[dev]"
 pytest
 ruff check src/ tests/
 ```
-
-## 라이선스
-
-MIT

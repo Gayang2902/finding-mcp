@@ -6,6 +6,15 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 
 die() { echo "[finding-mcp] ERROR: $*" >&2; exit 1; }
 
+# --- PATH augmentation: MCP hosts often spawn with minimal PATH ---
+for p in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+    [[ -d "$p" ]] && [[ ":$PATH:" != *":$p:"* ]] && PATH="$p:$PATH"
+done
+export PATH
+
+# --- consistent locale for subprocess output parsing ---
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+
 # --- pre-flight: python3 must exist ---
 command -v python3 &>/dev/null || die "python3 not found. Install Python 3.10+."
 

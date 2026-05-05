@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
-    project_root: Path
+    project_root: Path | None
     cache_dir: Path
     transport: str = "stdio"
     host: str = "0.0.0.0"
@@ -21,6 +21,15 @@ class Settings:
     max_limit: int = 500
     semgrep_timeout: int = 300
     semgrep_max_findings: int = 1000
+
+    def require_project_root(self) -> Path:
+        """Return project_root or raise a clear error if not configured."""
+        if self.project_root is None:
+            raise RuntimeError(
+                "No project root configured. "
+                "Call the set_project_root tool with the target repository path first."
+            )
+        return self.project_root
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -84,20 +93,13 @@ def load_settings(argv: list[str] | None = None) -> Settings:
         or args.project_root
         or _env("FINDING_MCP_PROJECT_ROOT", "CODE_NAVIGATOR_PROJECT_ROOT")
     )
-    if not root_str:
-        print(
-            "Error: project root is required.\n"
-            "  finding-mcp /path/to/repo\n"
-            "  finding-mcp --project-root /path/to/repo\n"
-            "  FINDING_MCP_PROJECT_ROOT=/path/to/repo finding-mcp",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
-    project_root = Path(root_str).expanduser().resolve()
-    if not project_root.is_dir():
-        print(f"Error: not a directory: {project_root}", file=sys.stderr)
-        sys.exit(1)
+    project_root: Path | None = None
+    if root_str:
+        project_root = Path(root_str).expanduser().resolve()
+        if not project_root.is_dir():
+            print(f"Error: not a directory: {project_root}", file=sys.stderr)
+            sys.exit(1)
 
     cache_str = args.cache_dir or _env("FINDING_MCP_CACHE_DIR", "CODE_NAVIGATOR_CACHE_DIR")
     if cache_str:

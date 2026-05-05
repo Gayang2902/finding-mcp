@@ -1,6 +1,13 @@
 # Finding MCP
 
-보안 분석 특화 MCP 서버. LLM 에이전트가 소스코드를 탐색하고, taint 분석을 수행하고, 라우트 인증 커버리지를 검사할 수 있게 합니다.
+LLM 에이전트가 코드 베이스를 효율적으로 탐색할 수 있도록 도구를 제공하는 MCP 서버
+- 소스코드 탐색
+- taint 분석
+- 라우트 인증 커버리지 검사
+```bash
+# 테스트는 mcp inspector로 진행
+npx @modelcontextprotocol/inspector ./run.sh <target_repo>
+```
 
 ## 빠른 시작
 
@@ -9,8 +16,34 @@ git clone https://github.com/Gayang2902/finding-mcp.git
 cd finding-mcp
 claude mcp add finding-mcp -- ./run.sh /path/to/target/repo
 ```
+venv 생성과 패키지 설치는 첫 실행 시 자동으로 처리
 
-끝. venv 생성과 패키지 설치는 첫 실행 시 자동으로 처리됩니다.
+### 동적 모드 (대상 프로젝트 자유 전환, 추천)
+
+대상 레포를 고정하지 않고 등록 시, 에이전트가 세션 중 자유롭게 프로젝트를 전환 가능
+
+```bash
+# 대상 경로 없이 등록
+claude mcp add finding-mcp -- /path/to/finding-mcp/run.sh
+```
+
+에이전트가 분석 시작 시 `set_project_root` 도구를 호출:
+
+```
+→ set_project_root("/home/user/project-a")   # project-a 분석 시작
+→ get_repo_info()
+→ run_taint_analysis()
+→ set_project_root("/home/user/project-b")   # project-b로 전환
+→ map_routes()
+```
+
+### 고정 모드 (단일 대상)
+
+분석 대상이 항상 같다면 등록 시 경로를 고정
+
+```bash
+claude mcp add finding-mcp -- ./run.sh /path/to/target/repo
+```
 
 ### install.sh로 등록 (Claude Code)
 
@@ -20,105 +53,119 @@ claude mcp add finding-mcp -- ./run.sh /path/to/target/repo
 ./install.sh .                               # 현재 디렉토리
 ```
 
-### install-gemini.sh로 등록 (Gemini CLI)
-
-```bash
-./install-gemini.sh /path/to/target/repo            # user scope (기본)
-./install-gemini.sh /path/to/target/repo -s project # project scope
-```
-
 ## 아키텍처
 
 ### 전체 구조
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      LLM Agent (Claude)                     │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ JSON-RPC (stdio / SSE / HTTP)
-┌──────────────────────────▼──────────────────────────────────┐
-│                    FastMCP Server (server.py)                │
-│                     20 tools registered                     │
-├─────────┬─────────┬──────────┬──────────┬─────────┬─────────┤
-│ Symbol  │Structure│  Search  │   Meta   │  Taint  │  Route  │
-│ (3)     │ (5)     │  (2)     │  (4)     │  (4)    │  (2)    │
-├─────────┼─────────┼──────────┼──────────┼─────────┼─────────┤
-│ tools_  │ tools_  │ tools_   │ tools_   │ tools_  │ tools_  │
-│ symbols │structure│ search   │ meta     │ taint   │ routes  │
-├─────────┴────┬────┴──────────┴─────┬────┴─────────┴─────────┤
-│              │    Index / Cache    │                         │
-│  ctags_index │ treesitter_index    │  semgrep    ripgrep     │
-├──────────────┼─────────────────────┼────────────────────────-┤
-│              │  External Binaries  │                         │
-│  universal-  │   tree-sitter       │  semgrep    ripgrep     │
-│  ctags       │   (library)         │  (optional) (rg)       │
-└──────────────┴─────────────────────┴─────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                   LLM Agent (Claude, Gemini, ...)               │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ JSON-RPC (stdio / SSE / HTTP)
+┌──────────────────────────────▼──────────────────────────────────┐
+│                     FastMCP Server (server.py)                   │
+│                       21 tools registered                       │
+├──────────┬───────────┬─────────┬────────┬─────────┬─────────────┤
+│  Symbol  │ Structure │ Search  │  Meta  │  Taint  │   Route     │
+│   (3)    │   (5)     │  (2)    │  (5)   │  (4)    │   (2)       │
+├──────────┴───────────┴─────────┴────────┴─────────┴─────────────┤
+│                        tools/ package                            │
+│  symbols.py  structure.py  search.py  meta.py  taint.py routes.py│
+├─────────────────────────────────────────────────────────────────┤
+│                      core/ + indexers/                           │
+│  ripgrep.py  git_utils.py  languages.py │ ctags.py treesitter.py│
+├─────────────────────────────────────────────────────────────────┤
+│                       analyzers/                                 │
+│         semgrep.py          framework_detect.py                  │
+├─────────────────────────────────────────────────────────────────┤
+│                    External Binaries                             │
+│  universal-ctags    tree-sitter (lib)    ripgrep    semgrep     │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 모듈 구성
+### 소스 구조
 
 ```
 src/finding_mcp/
-├── __main__.py              # 엔트리포인트 → server.main()
-├── server.py                # FastMCP 서버, 20개 도구 등록
-├── config.py                # CLI 인자 > 환경변수 > 기본값 (Settings dataclass)
-├── models.py                # Pydantic 응답 모델 (CodeLocation, SymbolDefinition, ...)
+├── __main__.py                  # 엔트리포인트 → server.main()
+├── server.py                    # FastMCP 서버, stdout 보호, 도구 등록
+├── config.py                    # Settings dataclass (CLI > 환경변수 > 기본값)
+├── models.py                    # Pydantic 응답 모델 (CodeLocation, SymbolDefinition, ...)
 │
-├── tools_symbols.py         # 심볼 탐색 도구 (ctags 기반)
-├── tools_structure.py       # 코드 구조 도구 (tree-sitter 기반)
-├── tools_search.py          # 검색 도구 (ripgrep 기반)
-├── tools_meta.py            # 메타데이터 도구 (파일시스템 + git)
-├── tools_taint.py           # Taint 분석 도구 (semgrep 기반)
-├── tools_routes.py          # 라우트/인증 도구
+├── core/                        # 공통 유틸리티
+│   ├── ripgrep.py               # ripgrep 서브프로세스 래퍼, regex_escape()
+│   ├── git_utils.py             # HEAD 커밋 해시, dirty 감지, cache_key()
+│   └── languages.py             # 확장자→언어 매핑 (CTAGS_LANGUAGE, RIPGREP_TYPE)
 │
-├── ctags_index.py           # universal-ctags 래퍼, JSON 캐시
-├── treesitter_index.py      # tree-sitter 파서, 언어별 초기화
-├── ripgrep.py               # ripgrep 서브프로세스 실행기
-├── semgrep.py               # semgrep 실행기, SARIF 파서
+├── indexers/                    # 파싱/인덱싱 계층
+│   ├── ctags.py                 # universal-ctags 래퍼, JSON 캐시, 커밋별 1-entry 유지
+│   └── treesitter.py            # tree-sitter 파서, 256-entry LRU 캐시
 │
-├── framework_detect.py      # 프레임워크 자동 감지
-├── languages.py             # 확장자→언어 매핑
-├── git_utils.py             # HEAD 커밋 해시, dirty 감지
+├── analyzers/                   # 고수준 분석기
+│   ├── semgrep.py               # Semgrep 실행기, SARIF 파서, compact_findings
+│   └── framework_detect.py      # 프레임워크 자동 감지 (Express/Spring/Laravel)
 │
-├── route_extractors/        # 프레임워크별 라우트 추출
-│   ├── express.py           # tree-sitter 기반
-│   ├── spring.py            # 어노테이션 스캔
-│   └── laravel.py           # ripgrep 기반
+├── tools/                       # MCP 도구 정의 (각 모듈에 register() 함수)
+│   ├── symbols.py               # 심볼 탐색 도구 (ctags 기반)
+│   ├── structure.py             # 코드 구조 도구 (tree-sitter 기반)
+│   ├── search.py                # 검색 도구 (ripgrep 기반)
+│   ├── meta.py                  # 메타데이터 도구 (파일시스템 + git)
+│   ├── taint.py                 # Taint 분석 도구 (semgrep 기반)
+│   └── routes.py                # 라우트/인증 도구
 │
-└── rules/                   # 내장 Semgrep taint 규칙 (YAML)
+├── route_extractors/            # 프레임워크별 라우트 추출기
+│   ├── express.py               # tree-sitter 기반 Express.js 라우트 파싱
+│   ├── spring.py                # 어노테이션 스캔 (Spring Boot)
+│   └── laravel.py               # ripgrep 기반 Laravel 라우트 파싱
+│
+└── rules/                       # 내장 Semgrep taint 규칙 (YAML)
     ├── js_taint.yaml
     ├── java_spring_taint.yaml
     └── php_taint.yaml
 ```
 
+### 외부 라이브러리 역할
+
+| 라이브러리 | 역할 | 사용하는 모듈 |
+|-----------|------|--------------|
+| **universal-ctags** | 소스코드에서 심볼(함수, 클래스, 변수) 정의를 추출. JSON 출력으로 파싱하여 `find_definition`, `list_symbols` 등에 활용 | `indexers/ctags.py` |
+| **ripgrep (rg)** | 대규모 코드베이스에서 고속 정규식/리터럴 검색. .gitignore 자동 반영, 언어별 필터링 지원 | `core/ripgrep.py` |
+| **tree-sitter** | 소스코드를 AST(Abstract Syntax Tree)로 파싱. 함수 본문 추출, 호출 관계 분석, 라우트 추출에 사용 | `indexers/treesitter.py` |
+| **semgrep** | SAST(Static Application Security Testing) 엔진. Taint 분석으로 source→sink 데이터 흐름 추적. SARIF 포맷 출력 | `analyzers/semgrep.py` |
+| **FastMCP** | MCP(Model Context Protocol) 서버 프레임워크. 도구 등록, JSON-RPC 라우팅, 다중 트랜스포트(stdio/SSE/HTTP) 제공 | `server.py` |
+| **Pydantic** | 응답 직렬화 및 검증. 모든 도구 응답이 타입 안전한 모델을 거쳐 JSON으로 변환 | `models.py` |
+
 ### 데이터 흐름
 
 ```
 1. 부트스트랩
-   run.sh → .venv 자동 생성/설치 → python -m finding_mcp
+   run.sh → PATH 보강 → .venv 자동 생성/설치 → python -m finding_mcp
 
 2. 초기화
    __main__.py → server.main()
-     → config.load_settings()   # CLI/env/default 우선순위
-     → _build_server(settings)  # 20개 도구를 FastMCP에 등록
-     → mcp.run(transport=...)   # stdio | sse | streamable-http
+     → config.load_settings()          # CLI/env/default 우선순위
+     → _guard_stdout()                 # stdio 모드에서 fd 보호
+     → _build_server(settings)         # 21개 도구를 FastMCP에 등록
+     → mcp.run(transport=...)          # stdio | sse | streamable-http
 
 3. 도구 호출
-   LLM → JSON-RPC request → FastMCP 라우터 → tools_*.py
-     → 인덱스/캐시 계층 (ctags_index, treesitter_index, ...)
-     → 외부 바이너리 실행 (ctags, rg, semgrep)
-     → Pydantic 모델로 직렬화 → JSON-RPC response
+   LLM → JSON-RPC request → FastMCP 라우터 → tools/*.py
+     → settings.require_project_root() # 프로젝트 경로 검증
+     → indexers/ (ctags, tree-sitter)  # 파싱/인덱싱
+     → core/ (ripgrep, git_utils)      # 검색/메타데이터
+     → analyzers/ (semgrep)            # 고수준 분석
+     → Pydantic 모델 직렬화 → JSON-RPC response
 ```
 
 ### 캐싱 전략
 
-| 계층 | 저장 위치 | 키 | 무효화 |
-|------|-----------|-----|--------|
-| ctags 인덱스 | `~/.cache/finding-mcp/tags/` (디스크) | `(commit_hash, project_root)` | 커밋 변경 시 |
-| tree-sitter AST | 인메모리 | `Path(file)` | 파일 mtime 변경 시 |
-| semgrep 결과 | 인메모리 + SARIF 파일 | `analysis_id (UUID)` | 세션 종료 시 |
+| 계층 | 저장 위치 | 키 | 무효화 | 용량 제한 |
+|------|-----------|-----|--------|-----------|
+| ctags 인덱스 | `~/.cache/finding-mcp/tags/` (디스크) | `(commit_hash, project_root)` | 커밋 변경 시 교체 | project_root당 1 entry |
+| tree-sitter AST | 인메모리 | `Path(file)` | 파일 mtime 변경 시 | 최대 256 entry (초과 시 oldest half 제거) |
+| semgrep 결과 | 인메모리 + SARIF 파일 | `analysis_id (UUID)` | 세션 종료 시 | 최대 10 분석 (FIFO) |
 
-모든 캐시 접근은 `threading.Lock`으로 보호됩니다.
+모든 캐시 접근은 `threading.Lock`으로 보호
 
 ### 설정 우선순위
 
@@ -158,6 +205,9 @@ pip install semgrep   # taint 분석용
 ```bash
 # 기본 (stdio) — Claude Code MCP에서 사용하는 모드
 finding-mcp /path/to/target/repo
+
+# 동적 모드 — 대상 없이 시작, 에이전트가 set_project_root로 설정
+finding-mcp
 
 # SSE 서버로 실행
 finding-mcp /path/to/repo -t sse -p 3000
@@ -216,85 +266,75 @@ claude mcp add finding-mcp -- /path/to/finding-mcp/run.sh /path/to/target/repo
 }
 ```
 
-## Gemini CLI 연동
+## 도구 (21개)
 
-### install-gemini.sh (권장)
+### 프로젝트 설정
 
-```bash
-./install-gemini.sh /path/to/target/repo
-```
+| 도구 | 설명 | 모듈 |
+|------|------|------|
+| `set_project_root(path)` | 분석 대상 레포 설정/전환. 동적 모드에서 필수 | `server.py` |
 
-`~/.gemini/settings.json`에 자동 등록됩니다.
+### 심볼 탐색 — `tools/symbols.py`
 
-### settings.json 수동 설정
-
-```json
-{
-  "mcpServers": {
-    "finding-mcp": {
-      "command": "/path/to/finding-mcp/run.sh",
-      "args": ["/path/to/target/repo"],
-      "timeout": 30000
-    }
-  }
-}
-```
-
-| Scope | 파일 위치 |
-|-------|-----------|
-| user | `~/.gemini/settings.json` |
-| project | `.gemini/settings.json` |
-
-## 도구 (20개)
-
-### 심볼 탐색 (ctags)
+universal-ctags 인덱스를 사용하여 심볼 정의/참조를 검색합니다.
 
 | 도구 | 설명 |
 |------|------|
-| `find_definition(symbol, language?)` | 심볼 정의 위치 |
-| `find_references(symbol, language?, limit?)` | 심볼 참조 위치 |
-| `list_symbols(file_path)` | 파일 내 모든 심볼 |
+| `find_definition(symbol, language?)` | 심볼 정의 위치 (함수, 클래스, 변수) |
+| `find_references(symbol, language?, limit?)` | 심볼이 사용된 모든 위치 |
+| `list_symbols(file_path)` | 파일 내 모든 심볼 나열 |
 
-### 코드 구조 (tree-sitter)
+### 코드 구조 — `tools/structure.py`
 
-| 도구 | 설명 |
-|------|------|
-| `get_function(file_path, function_name)` | 함수 전체 본문 |
-| `get_function_at(file_path, line)` | 특정 라인이 속한 함수 |
-| `get_callees(file_path, function_name)` | 함수가 호출하는 대상 |
-| `get_callers(symbol, limit?)` | 심볼을 호출하는 곳 |
-| `get_imports(file_path)` | import/require 목록 |
-
-### 검색 (ripgrep)
+tree-sitter AST를 사용하여 함수 본문과 호출 관계를 분석합니다.
 
 | 도구 | 설명 |
 |------|------|
-| `search_code(pattern, glob?, language?, limit?)` | 정규식 검색 |
-| `search_literal(text, glob?, language?, limit?)` | 리터럴 검색 |
+| `get_function(file_path, function_name)` | 함수 전체 본문 + 시그니처 |
+| `get_function_at(file_path, line)` | 특정 라인이 속한 함수 반환 |
+| `get_callees(file_path, function_name)` | 함수 내부에서 호출하는 모든 대상 |
+| `get_callers(symbol, limit?)` | 코드베이스에서 심볼을 호출하는 곳 |
+| `get_imports(file_path)` | import/require/use 선언 목록 |
 
-### 메타
+### 검색 — `tools/search.py`
 
-| 도구 | 설명 |
-|------|------|
-| `list_files(glob?, limit?)` | 파일 목록 |
-| `get_file(file_path, line_start?, line_end?)` | 파일/부분 조회 |
-| `get_repo_info()` | 프로젝트 정보, 언어 분포 |
-| `get_project_structure(max_depth?, include_file_sizes?)` | 디렉토리 트리 |
-
-### Taint 분석 (Semgrep)
+ripgrep을 사용하여 코드베이스를 고속 검색합니다.
 
 | 도구 | 설명 |
 |------|------|
-| `run_taint_analysis(rule_file?, language?, target_dir?)` | Source→Sink 데이터 흐름 분석 |
+| `search_code(pattern, glob?, language?, limit?)` | PCRE 정규식 검색 |
+| `search_literal(text, glob?, language?, limit?)` | 리터럴 문자열 검색 (메타문자 이스케이프 불필요) |
+
+### 메타데이터 — `tools/meta.py`
+
+파일시스템과 git 정보를 조회합니다.
+
+| 도구 | 설명 |
+|------|------|
+| `list_files(glob?, limit?)` | 프로젝트 파일 목록 (.gitignore 반영) |
+| `get_file(file_path, line_start?, line_end?)` | 파일 내용 조회 (범위 지정 가능) |
+| `get_repo_info()` | 프로젝트 정보 (언어 분포, 커밋 해시, 파일 수) |
+| `get_project_structure(max_depth?, include_file_sizes?)` | 디렉토리 트리 구조 |
+| `find_similar_files(file_path, limit?)` | 유사 파일 탐색 |
+
+### Taint 분석 — `tools/taint.py`
+
+Semgrep을 사용하여 source→sink 데이터 흐름을 추적합니다.
+
+| 도구 | 설명 |
+|------|------|
+| `run_taint_analysis(rule_file?, language?, target_dir?)` | Taint 분석 실행 (내장/커스텀 규칙) |
 | `get_taint_paths(analysis_id, limit?, offset?)` | 분석 결과 목록 (페이지네이션) |
-| `get_taint_path_detail(analysis_id, finding_id)` | 개별 finding 상세 |
-| `list_taint_analyses()` | 완료된 분석 목록 |
+| `get_taint_path_detail(analysis_id, finding_id)` | 개별 finding 상세 (dataflow 경로) |
+| `list_taint_analyses()` | 완료된 분석 세션 목록 |
 
-### 라우트 & 인증
+### 라우트 & 인증 — `tools/routes.py`
+
+HTTP 라우트를 추출하고 인증 커버리지를 검사합니다.
 
 | 도구 | 설명 |
 |------|------|
-| `map_routes(framework?)` | HTTP 라우트 매핑 + 미들웨어 |
+| `map_routes(framework?)` | HTTP 라우트 매핑 + 미들웨어 + 핸들러 |
 | `check_auth_coverage(framework?, auth_patterns?)` | 인증 누락 라우트 탐지 |
 
 지원 프레임워크: Express, Spring, Laravel (자동 감지)

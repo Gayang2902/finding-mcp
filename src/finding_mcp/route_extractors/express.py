@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..indexers.treesitter import TreeSitterError, _node_text, _walk, parse_file
 from ..models import CodeLocation, RouteDefinition
-from ..treesitter_index import TreeSitterError, _node_text, _walk, parse_file
 
 HTTP_METHODS = {"get", "post", "put", "delete", "patch", "all"}
 

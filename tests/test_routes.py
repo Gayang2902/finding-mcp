@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from finding_mcp.analyzers.framework_detect import detect_frameworks
 from finding_mcp.config import Settings
-from finding_mcp.framework_detect import detect_frameworks
-from finding_mcp.tools_routes import check_auth_coverage, map_routes
+from finding_mcp.tools.routes import check_auth_coverage, map_routes
 
 
 @pytest.fixture

@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from finding_mcp.config import Settings
-from finding_mcp.tools_meta import get_repo_info, list_files
-from finding_mcp.tools_search import search_literal
-from finding_mcp.tools_structure import get_function, get_imports
+from finding_mcp.tools.meta import get_repo_info, list_files
+from finding_mcp.tools.search import search_literal
+from finding_mcp.tools.structure import get_function, get_imports
 
 
 @pytest.fixture

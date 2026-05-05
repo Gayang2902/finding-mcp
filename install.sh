@@ -46,9 +46,20 @@ TARGET="$RESOLVED"
 missing=()
 command -v python3 &>/dev/null || missing+=("python3")
 command -v claude  &>/dev/null || missing+=("claude (Claude Code CLI)")
+command -v rg      &>/dev/null || missing+=("ripgrep (brew install ripgrep)")
+
+# universal-ctags: macOS ships BSD ctags which is incompatible
+if /opt/homebrew/bin/ctags --version &>/dev/null 2>&1 || /usr/local/bin/ctags --version &>/dev/null 2>&1; then
+    :
+else
+    missing+=("universal-ctags (brew install universal-ctags)")
+fi
 
 if [[ ${#missing[@]} -gt 0 ]]; then
-    echo "Error: missing required tools: ${missing[*]}" >&2
+    echo "Error: missing required tools:" >&2
+    for m in "${missing[@]}"; do
+        echo "  - $m" >&2
+    done
     exit 1
 fi
 
@@ -59,7 +70,14 @@ echo "  Scope:  $SCOPE"
 echo ""
 
 claude mcp remove "$SERVER_NAME" -s "$SCOPE" 2>/dev/null || true
-claude mcp add "$SERVER_NAME" -s "$SCOPE" -- "$SCRIPT_DIR/run.sh" "$TARGET"
+
+# Register with explicit working directory to ensure connection works
+# regardless of where the agent's cwd is.
+if claude mcp add --help 2>&1 | grep -q -- '--cwd'; then
+    claude mcp add "$SERVER_NAME" -s "$SCOPE" --cwd "$SCRIPT_DIR" -- "$SCRIPT_DIR/run.sh" "$TARGET"
+else
+    claude mcp add "$SERVER_NAME" -s "$SCOPE" -- "$SCRIPT_DIR/run.sh" "$TARGET"
+fi
 
 echo ""
 echo "Done! The venv will be created automatically on first MCP call."

